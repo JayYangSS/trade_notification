@@ -1,6 +1,6 @@
 from send_message import wxpusher_send
 import time
-from stock_utils import stock_utils
+from stock_utils import StockDataLoader
 
 
 # 核心指标计算（以文献9的Python源码为基础）
@@ -19,7 +19,7 @@ def calculate_signals(data):
     data['MACD'] = (data['DIF'] - data['DEA']) * 2
     
     # 主力线与散户线（简化版，完整逻辑参考文献9）
-    data['主力线'] = data['close'].rolling(27).apply(lambda x: (x[-1]-x.min())/(x.max()-x.min())*100).ewm(span=3).mean()
+    data['主力线'] = data['close'].rolling(27, min_periods=1).apply(lambda x: (x.iloc[-1]-x.min())/(x.max()-x.min())*100 if len(x)>0 else 0).ewm(span=3).mean()
     data['散户线'] = data['主力线'].ewm(span=3).mean()
     
     return data
@@ -110,7 +110,7 @@ def detect_bearish_candlestick(data):
     
     return False, "无看跌形态"
 
-def monitor_market(stock_list, data_fetcher):
+def monitor_market(stock_list, data_fetcher,output_num=2):
     """
     监控全市场股票
     
@@ -121,6 +121,7 @@ def monitor_market(stock_list, data_fetcher):
     buy_signals = []
     sell_signals = []
     
+    buy_info_count = 0
     for stock_code in stock_list:
         try:
             # 获取股票数据
@@ -135,18 +136,21 @@ def monitor_market(stock_list, data_fetcher):
                     'price': data['close'].iloc[-1],
                     'reason': get_buy_reason(data)  # 获取具体触发原因
                 })
+                buy_info_count += 1
+                if buy_info_count >= output_num:
+                    break
             
             # 检查卖出信号（假设我们跟踪了持仓股票）
-            if stock_code in stock_utils.get_holding_stocks():  # 需要实现此函数
-                position = stock_utils.get_position_info(stock_code)  # 需要实现此函数
-                if check_sell_signal(data, position['entry_price'], position['lowest_price']):
-                    sell_signals.append({
-                        'code': stock_code,
-                        'name': stock_utils.get_stock_name(stock_code),
-                        'price': data['close'].iloc[-1],
-                        'profit': (data['close'].iloc[-1] - position['entry_price']) / position['entry_price'] * 100,
-                        'reason': get_sell_reason(data)  # 获取具体触发原因
-                    })
+            # if stock_code in stock_utils.get_holding_stocks():  # 需要实现此函数
+            #     position = stock_utils.get_position_info(stock_code)  # 需要实现此函数
+            #     if check_sell_signal(data, position['entry_price'], position['lowest_price']):
+            #         sell_signals.append({
+            #             'code': stock_code,
+            #             'name': stock_utils.get_stock_name(stock_code),
+            #             'price': data['close'].iloc[-1],
+            #             'profit': (data['close'].iloc[-1] - position['entry_price']) / position['entry_price'] * 100,
+            #             'reason': get_sell_reason(data)  # 获取具体触发原因
+            #         })
                     
         except Exception as e:
             print(f"处理股票 {stock_code} 时出错: {str(e)}")
@@ -225,6 +229,7 @@ def send_sell_signals(signals):
 if __name__ == "__main__":
     print("正在初始化股票监控系统...")
     # 获取股票列表
+    stock_utils = StockDataLoader()
     stock_list = stock_utils.get_stock_list()
     print(f"成功获取{len(stock_list)}只股票")
     
