@@ -111,11 +111,11 @@ def detect_bearish_candlestick(data):
     
     return False, "无看跌形态"
 
-def process_single_stock(stock_code, data_fetcher):
+def process_single_stock(stock_code_name, data_fetcher):
     """处理单只股票的函数"""
     try:
         # 获取股票数据
-        data = data_fetcher(stock_code)
+        data = data_fetcher(stock_code_name['code'])
         if data is None or data.empty:
             return None
             
@@ -124,13 +124,13 @@ def process_single_stock(stock_code, data_fetcher):
         # 检查买入信号
         if check_buy_signal(data):
             return {
-                'code': stock_code,
-                'name': stock_utils.get_stock_name(stock_code),
+                'code': stock_code_name['code'],
+                'name': stock_code_name['name'],
                 'price': data['close'].iloc[-1],
                 'reason': get_buy_reason(data)
             }
     except Exception as e:
-        print(f"处理股票 {stock_code} 时出错: {str(e)}")
+        print(f"处理股票 {stock_code_name['code']}:{stock_code_name['name']} 时出错: {str(e)}")
     return None
 
 def monitor_market(stock_list, data_fetcher, output_num=2, max_workers=10):
@@ -170,6 +170,10 @@ def monitor_market(stock_list, data_fetcher, output_num=2, max_workers=10):
             if result:
                 buy_signals.append(result)
                 if len(buy_signals) >= output_num:
+                    # 取消所有未完成的任务
+                    for f in future_to_stock:
+                        f.cancel()
+                    print(f"已找到{output_num}个信号，提前结束扫描。")
                     break
     
     # 发送买入信号通知
@@ -240,17 +244,3 @@ def send_sell_signals(signals):
     wxpusher_send(message)
 
 
-
-if __name__ == "__main__":
-    print("正在初始化股票监控系统...")
-    # 获取股票列表
-    stock_utils = StockDataLoader()
-    stock_list = stock_utils.get_stock_list()
-    print(f"成功获取{len(stock_list)}只股票")
-    
-    # 定时运行市场监控
-    while True:
-        print(f"开始新一轮市场扫描 - {time.strftime('%Y-%m-%d %H:%M:%S')}")
-        monitor_market(stock_list, stock_utils.get_stock_data, output_num=10000, max_workers=20)
-        print("扫描完成，等待下一轮...")
-        time.sleep(300)  # 5分钟扫描一次

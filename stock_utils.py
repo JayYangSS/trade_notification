@@ -38,9 +38,23 @@ class StockDataLoader:
             return []
 
     def get_stock_list(self, include_etf=False):
-        """获取证券代码列表"""
-        base_list = self.stock_list['full_code'].tolist() if not self.stock_list.empty else []
-        return base_list + self.etf_list if include_etf else base_list
+        """获取证券代码和名称列表"""
+        base_list = []
+        if not self.stock_list.empty:
+            base_list = [
+                {
+                    'code': row['full_code'],
+                    'name': row['short_name']
+                }
+                for _, row in self.stock_list.iterrows()
+            ]
+        
+        if include_etf:
+            # ETF暂时只返回代码,名称设为"ETF"
+            etf_list = [{'code': code, 'name': 'ETF'} for code in self.etf_list]
+            base_list.extend(etf_list)
+            
+        return base_list
 
     def get_stock_data(self, stock_code, days=250):
         """获取行情数据（已验证方法）"""
