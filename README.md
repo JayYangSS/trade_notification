@@ -88,7 +88,8 @@ python main.py
 ```
 ├── strategy.py # 主程序和策略逻辑
 ├── stock_utils.py # 股票数据处理工具
-├── demo.py # 微信推送模块
+├── main.py # 程序运行入口
+├── send_message.py # 微信消息推送模块
 ├── requirements.txt # 项目依赖
 └── README.md # 项目说明文档
 ```
