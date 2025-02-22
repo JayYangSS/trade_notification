@@ -16,13 +16,14 @@ class StockDataLoader:
             df = adata.stock.info.all_code()
             
             # 过滤ST股票
-            df = df[~df['short_name'].str.contains('ST', na=False)]
-            
+            df = df[~df['short_name'].str.contains('ST|PT|退', na=False)]
+            # 过滤北交所股票
+            df = df[df['exchange'] != 'BJ']
             # 添加交易所后缀
-            df['full_code'] = df['stock_code'].apply(
-                lambda x: f"{x}.SH" if x.startswith(('6', '5', '9')) else f"{x}.SZ"
+            df['full_code'] = df.apply(
+                lambda row: f"{row['stock_code']}.{row['exchange']}", axis=1
             )
-            print(f"成功加载{len(df)}只股票信息（已剔除ST股票）")
+            print(f"成功加载{len(df)}只股票信息（已剔除ST|PT|退市股票）")
             return df
         except Exception as e:
             print(f"股票列表加载失败: {str(e)}")

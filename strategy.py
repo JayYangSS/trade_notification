@@ -126,6 +126,9 @@ def monitor_market(stock_list, data_fetcher,output_num=2):
         try:
             # 获取股票数据
             data = data_fetcher(stock_code)
+            if data.empty:
+                print(f"{stock_code} data is empty")
+                continue
             data = calculate_signals(data)
             
             # 检查买入信号
@@ -235,10 +238,7 @@ if __name__ == "__main__":
     
     # 定时运行市场监控
     while True:
-        try:
-            print(f"开始新一轮市场扫描 - {time.strftime('%Y-%m-%d %H:%M:%S')}")
-            monitor_market(stock_list, stock_utils.get_stock_data)
-            print("扫描完成，等待下一轮...")
-        except Exception as e:
-            print(f"运行出错: {str(e)}")
+        print(f"开始新一轮市场扫描 - {time.strftime('%Y-%m-%d %H:%M:%S')}")
+        monitor_market(stock_list, stock_utils.get_stock_data,output_num=10000)
+        print("扫描完成，等待下一轮...")
         time.sleep(300)  # 5分钟扫描一次
