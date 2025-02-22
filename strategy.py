@@ -1,6 +1,7 @@
 from send_message import wxpusher_send
 import time
 from stock_utils import StockDataLoader
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 # 核心指标计算（以文献9的Python源码为基础）
@@ -110,62 +111,73 @@ def detect_bearish_candlestick(data):
     
     return False, "无看跌形态"
 
-def monitor_market(stock_list, data_fetcher,output_num=2):
+def process_single_stock(stock_code, data_fetcher):
+    """处理单只股票的函数"""
+    try:
+        # 获取股票数据
+        data = data_fetcher(stock_code)
+        if data is None or data.empty:
+            return None
+            
+        data = calculate_signals(data)
+        
+        # 检查买入信号
+        if check_buy_signal(data):
+            return {
+                'code': stock_code,
+                'name': stock_utils.get_stock_name(stock_code),
+                'price': data['close'].iloc[-1],
+                'reason': get_buy_reason(data)
+            }
+    except Exception as e:
+        print(f"处理股票 {stock_code} 时出错: {str(e)}")
+    return None
+
+def monitor_market(stock_list, data_fetcher, output_num=2, max_workers=10):
     """
-    监控全市场股票
+    并发监控全市场股票
     
     参数:
     stock_list: 股票代码列表
     data_fetcher: 获取股票数据的函数
+    output_num: 最大输出数量
+    max_workers: 最大线程数
     """
     buy_signals = []
-    sell_signals = []
+    processed_count = 0
+    total_stocks = len(stock_list)
     
-    buy_info_count = 0
-    for stock_code in stock_list:
-        try:
-            # 获取股票数据
-            data = data_fetcher(stock_code)
-            if data.empty:
-                print(f"{stock_code} data is empty")
-                continue
-            data = calculate_signals(data)
+    print(f"开始并发处理{total_stocks}只股票...")
+    start_time = time.time()
+    
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # 提交所有任务
+        future_to_stock = {
+            executor.submit(process_single_stock, stock, data_fetcher): stock 
+            for stock in stock_list
+        }
+        
+        # 处理完成的任务
+        for future in as_completed(future_to_stock):
+            processed_count += 1
+            if processed_count % 100 == 0:  # 每处理100只股票打印一次进度
+                elapsed = time.time() - start_time
+                print(f"已处理: {processed_count}/{total_stocks} "
+                      f"耗时: {elapsed:.2f}秒 "
+                      f"平均: {elapsed/processed_count:.3f}秒/只")
             
-            # 检查买入信号
-            if check_buy_signal(data):
-                buy_signals.append({
-                    'code': stock_code,
-                    'name': stock_utils.get_stock_name(stock_code),  # 需要实现此函数
-                    'price': data['close'].iloc[-1],
-                    'reason': get_buy_reason(data)  # 获取具体触发原因
-                })
-                buy_info_count += 1
-                if buy_info_count >= output_num:
+            result = future.result()
+            if result:
+                buy_signals.append(result)
+                if len(buy_signals) >= output_num:
                     break
-            
-            # 检查卖出信号（假设我们跟踪了持仓股票）
-            # if stock_code in stock_utils.get_holding_stocks():  # 需要实现此函数
-            #     position = stock_utils.get_position_info(stock_code)  # 需要实现此函数
-            #     if check_sell_signal(data, position['entry_price'], position['lowest_price']):
-            #         sell_signals.append({
-            #             'code': stock_code,
-            #             'name': stock_utils.get_stock_name(stock_code),
-            #             'price': data['close'].iloc[-1],
-            #             'profit': (data['close'].iloc[-1] - position['entry_price']) / position['entry_price'] * 100,
-            #             'reason': get_sell_reason(data)  # 获取具体触发原因
-            #         })
-                    
-        except Exception as e:
-            print(f"处理股票 {stock_code} 时出错: {str(e)}")
-            continue
     
     # 发送买入信号通知
     if buy_signals:
         send_buy_signals(buy_signals)
     
-    # 发送卖出信号通知
-    if sell_signals:
-        send_sell_signals(sell_signals)
+    elapsed = time.time() - start_time
+    print(f"处理完成! 总耗时: {elapsed:.2f}秒, 平均: {elapsed/total_stocks:.3f}秒/只")
 
 def get_buy_reason(data):
     """获取买入信号触发的具体原因"""
@@ -239,6 +251,6 @@ if __name__ == "__main__":
     # 定时运行市场监控
     while True:
         print(f"开始新一轮市场扫描 - {time.strftime('%Y-%m-%d %H:%M:%S')}")
-        monitor_market(stock_list, stock_utils.get_stock_data,output_num=10000)
+        monitor_market(stock_list, stock_utils.get_stock_data, output_num=10000, max_workers=20)
         print("扫描完成，等待下一轮...")
         time.sleep(300)  # 5分钟扫描一次
